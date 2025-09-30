@@ -1,0 +1,10 @@
+services:
+  - type: static
+    name: my-digital-library
+    env: static
+    buildCommand: ''
+    staticPublishPath: .
+    pullRequestPreviewsEnabled: false
+    autoDeploy: true
+
+

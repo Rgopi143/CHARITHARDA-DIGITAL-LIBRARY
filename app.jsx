@@ -2,6 +2,10 @@ const STORAGE_KEY = 'mdl:docs';
 const API_BASE = 'http://localhost:3001/api';
 const IDB_NAME = 'mdlBlobs.v1';
 const IDB_STORE = 'files';
+// Google Drive Picker config (replace with your credentials)
+const GOOGLE_API_KEY = 'YOUR_GOOGLE_API_KEY';
+const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 
 function loadDocs() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
@@ -286,6 +290,78 @@ function App() {
     load();
   }, [setDocs]);
 
+  // --- Google Drive import ---
+  const loadScript = (src) => new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement('script'); s.src = src; s.async = true;
+    s.onload = resolve; s.onerror = reject; document.body.appendChild(s);
+  });
+
+  const ensureGoogleApis = React.useCallback(async () => {
+    await loadScript('https://apis.google.com/js/api.js');
+    await loadScript('https://accounts.google.com/gsi/client');
+    await new Promise((res) => window.gapi ? res() : (window.addEventListener('gapiLoaded', res)));
+  }, []);
+
+  const importFromDrive = React.useCallback(async () => {
+    if (!GOOGLE_API_KEY || GOOGLE_API_KEY.startsWith('YOUR_') || !GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.startsWith('YOUR_')) {
+      alert('Configure Google API Key and Client ID in app.jsx to use Drive import.');
+      return;
+    }
+    try {
+      await ensureGoogleApis();
+      await new Promise((resolve) => window.gapi.load('picker', { callback: resolve }));
+
+      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: GOOGLE_SCOPES,
+        callback: () => {}
+      });
+      const accessToken = await new Promise((resolve, reject) => {
+        tokenClient.requestAccessToken({ prompt: 'consent', hint: '' });
+        const check = setInterval(() => {
+          const t = window.gapi && window.gapi.client && window.gapi.client.getToken && window.gapi.client.getToken();
+          if (t && t.access_token) { clearInterval(check); resolve(t.access_token); }
+        }, 200);
+        setTimeout(() => { clearInterval(check); reject(new Error('Token timeout')); }, 10000);
+      });
+
+      const view = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS).setIncludeFolders(true).setSelectFolderEnabled(false);
+      const picker = new window.google.picker.PickerBuilder()
+        .addView(view)
+        .setDeveloperKey(GOOGLE_API_KEY)
+        .setOAuthToken(accessToken)
+        .setCallback(async (data) => {
+          if (data.action !== window.google.picker.Action.PICKED) return;
+          const picked = data.docs || [];
+          if (!picked.length) return;
+          const fd = new FormData();
+          for (const doc of picked) {
+            const fileId = doc.id; const name = doc.name; const mime = doc.mimeType;
+            const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, { headers: { Authorization: `Bearer ${accessToken}` } });
+            if (!resp.ok) continue;
+            const blob = await resp.blob();
+            const file = new File([blob], name, { type: mime || blob.type || 'application/octet-stream' });
+            fd.append('file', file);
+          }
+          if ([...fd.keys()].length === 0) return;
+          const uploadResp = await fetch(`${API_BASE}/upload`, { method: 'POST', body: fd });
+          if (!uploadResp.ok) { alert('Import failed'); return; }
+          const data2 = await uploadResp.json();
+          const created = (data2.uploaded || []).map(u => ({ id: u.id, name: u.name, size: u.size, type: u.type }));
+          setDocs(prev => [...created, ...prev]);
+          setActive('docs');
+        })
+        .setTitle('Select files from Google Drive')
+        .enableFeature(window.google.picker.Feature.NAV_HIDDEN)
+        .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
+        .build();
+      picker.setVisible(true);
+    } catch (e) {
+      alert('Unable to import from Drive.');
+    }
+  }, [setDocs, setActive, ensureGoogleApis]);
+
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return docs;
@@ -323,9 +399,7 @@ function App() {
                   <input id="add-more" type="file" multiple onChange={(e)=> onFiles(e.target.files)} />
                   Add More
                 </label>
-                <a className="btn primary" href="https://drive.google.com/drive/my-drive" target="_blank" rel="noopener noreferrer" title="Open Google Drive">
-                  Google Drive
-                </a>
+                <button className="btn primary" onClick={importFromDrive} title="Import from Google Drive">Import from Drive</button>
               </div>
             </div>
             {filtered.length === 0 ? (

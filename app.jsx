@@ -170,6 +170,7 @@ function App() {
   const [docs, setDocs] = useLocalStorageDocs();
   const [query, setQuery] = React.useState('');
   const [preview, setPreview] = React.useState(null);
+  const [driveLink, setDriveLink] = React.useState('');
 
   // --- IndexedDB helpers for Blob persistence across refreshes ---
   const openDB = React.useCallback(() => new Promise((resolve, reject) => {
@@ -362,6 +363,65 @@ function App() {
     }
   }, [setDocs, setActive, ensureGoogleApis]);
 
+  const parseDriveFileId = (link) => {
+    if (!link) return null;
+    try {
+      // Handles links like https://drive.google.com/file/d/FILE_ID/view?usp=...
+      // or https://drive.google.com/open?id=FILE_ID or https://drive.google.com/uc?id=FILE_ID
+      const url = new URL(link);
+      const idParam = url.searchParams.get('id');
+      if (idParam) return idParam;
+      const parts = url.pathname.split('/').filter(Boolean);
+      const idx = parts.indexOf('d');
+      if (idx >= 0 && parts[idx+1]) return parts[idx+1];
+      return null;
+    } catch { return null; }
+  };
+
+  const importDriveLink = React.useCallback(async () => {
+    const fileId = parseDriveFileId(driveLink.trim());
+    if (!fileId) { alert('Invalid Google Drive link.'); return; }
+    if (!GOOGLE_API_KEY || GOOGLE_API_KEY.startsWith('YOUR_') || !GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.startsWith('YOUR_')) {
+      alert('Configure Google API Key and Client ID in app.jsx to use Drive import.');
+      return;
+    }
+    try {
+      await ensureGoogleApis();
+      await new Promise((resolve) => window.gapi.load('picker', { callback: resolve }));
+      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: GOOGLE_SCOPES,
+        callback: () => {}
+      });
+      const accessToken = await new Promise((resolve, reject) => {
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+        const check = setInterval(() => {
+          const t = window.gapi && window.gapi.client && window.gapi.client.getToken && window.gapi.client.getToken();
+          if (t && t.access_token) { clearInterval(check); resolve(t.access_token); }
+        }, 200);
+        setTimeout(() => { clearInterval(check); reject(new Error('Token timeout')); }, 10000);
+      });
+      const metaResp = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!metaResp.ok) { alert('Cannot access this Drive file.'); return; }
+      const meta = await metaResp.json();
+      const mediaResp = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!mediaResp.ok) { alert('Failed to download file from Drive.'); return; }
+      const blob = await mediaResp.blob();
+      const file = new File([blob], meta.name || 'drive-file', { type: meta.mimeType || blob.type || 'application/octet-stream' });
+      const fd = new FormData();
+      fd.append('file', file);
+      const uploadResp = await fetch(`${API_BASE}/upload`, { method: 'POST', body: fd });
+      if (!uploadResp.ok) { alert('Import failed'); return; }
+      const data2 = await uploadResp.json();
+      const created = (data2.uploaded || []).map(u => ({ id: u.id, name: u.name, size: u.size, type: u.type }));
+      setDocs(prev => [...created, ...prev]);
+      setDriveLink('');
+      setActive('docs');
+    } catch (e) {
+      alert('Unable to import from Drive link.');
+    }
+  }, [driveLink, setDocs, setActive, ensureGoogleApis]);
+
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return docs;
@@ -401,6 +461,10 @@ function App() {
                 </label>
                 <button className="btn primary" onClick={importFromDrive} title="Import from Google Drive">Import from Drive</button>
               </div>
+            </div>
+            <div style={{display:'flex', gap:'8px', margin:'10px 0'}}>
+              <input type="url" placeholder="Paste Google Drive link (from email)" value={driveLink} onChange={(e)=> setDriveLink(e.target.value)} className="btn subtle" style={{flex:1}} />
+              <button className="btn subtle" onClick={importDriveLink} disabled={!driveLink.trim()}>Import Link</button>
             </div>
             {filtered.length === 0 ? (
               <div id="empty-state" className="empty">

@@ -459,7 +459,7 @@ function App() {
                   <input id="add-more" type="file" multiple onChange={(e)=> onFiles(e.target.files)} />
                   Add More
                 </label>
-                <button className="btn primary" onClick={importFromDrive} title="Import from Google Drive">Import from Drive</button>
+                <button className="btn primary" onClick={importFromDrive} title="Google Drive">Google Drive</button>
               </div>
             </div>
             <div style={{display:'flex', gap:'8px', margin:'10px 0'}}>

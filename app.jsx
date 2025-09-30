@@ -130,10 +130,38 @@ function DocsList({ docs, onRemove, onOpen }) {
   );
 }
 
+function PreviewContent({ url, type, name }) {
+  const lower = (name || '').toLowerCase();
+  const isImage = (type && type.startsWith('image/')) || lower.match(/\.(png|jpe?g|gif|webp|svg)$/);
+  const isVideo = (type && type.startsWith('video/')) || lower.match(/\.(mp4|webm|mov|mkv)$/);
+  const isAudio = (type && type.startsWith('audio/')) || lower.match(/\.(mp3|wav|m4a|flac)$/);
+  const isPdf = lower.endsWith('.pdf') || (type && type.includes('pdf'));
+
+  if (isImage) {
+    return <img src={url} alt={name} style={{maxWidth:'100%', maxHeight:'70vh', display:'block', margin:'0 auto'}} />;
+  }
+  if (isVideo) {
+    return <video src={url} controls style={{width:'100%', maxHeight:'70vh'}} />;
+  }
+  if (isAudio) {
+    return <audio src={url} controls style={{width:'100%'}} />;
+  }
+  if (isPdf) {
+    return <iframe title={name} src={url} style={{width:'100%', height:'70vh', border:0}} />;
+  }
+  return (
+    <div style={{textAlign:'center'}}>
+      <p>Preview not supported for this file type.</p>
+      <a className="btn primary" href={url} download target="_blank" rel="noopener noreferrer">Download</a>
+    </div>
+  );
+}
+
 function App() {
   const [active, setActive] = React.useState('upload');
   const [docs, setDocs] = useLocalStorageDocs();
   const [query, setQuery] = React.useState('');
+  const [preview, setPreview] = React.useState(null);
 
   const onFiles = React.useCallback((files) => {
     if (!files || !files.length) return;
@@ -157,8 +185,7 @@ function App() {
         alert('This file was saved as metadata only. Please re-upload to open the original.');
         return;
       }
-      const win = window.open(url, '_blank', 'noopener');
-      if (!win) alert('Please allow pop-ups to open the document.');
+      setPreview({ name: doc.name, type: doc.type, url });
     } catch (e) {
       alert('Unable to open this document.');
     }
@@ -216,6 +243,20 @@ function App() {
             )}
           </div>
         </section>
+      )}
+
+      {preview && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={`Preview ${preview.name}`} onClick={() => setPreview(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title" title={preview.name}>{preview.name}</div>
+              <button className="btn subtle" onClick={() => setPreview(null)}>Close</button>
+            </div>
+            <div className="modal-body">
+              <PreviewContent url={preview.url} type={preview.type} name={preview.name} />
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

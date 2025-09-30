@@ -194,3 +194,10 @@ body::before {
   .dropzone h2 { font-size: 22px; }
   .panel { padding: 16px; }
 }
+
+/* Modal preview */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(3, 7, 18, .7); display: grid; place-items: center; z-index: 1000; animation: fadeIn .2s ease both; }
+.modal { width: min(920px, 92vw); max-height: 86vh; background: rgba(17, 25, 40, .95); border: 1px solid rgba(255,255,255,.14); border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.5); display: flex; flex-direction: column; overflow: hidden; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.modal-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 8px; }
+.modal-body { padding: 12px; }

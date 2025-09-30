@@ -62,7 +62,7 @@ function Dropzone({ onFiles, disabled }) {
   );
 }
 
-function DocsList({ docs, onRemove, onOpen }) {
+function DocsList({ docs, onRemove, onOpen, onDownload }) {
   const iconFor = React.useCallback((name, type) => {
     const lower = (name || '').toLowerCase();
     if (type && type.startsWith('image/')) return '🖼️';
@@ -119,6 +119,7 @@ function DocsList({ docs, onRemove, onOpen }) {
                   <span>{d.type || 'unknown'}</span>
                 </div>
                 <div className="doc-actions">
+                  <button className="btn subtle" onClick={() => onDownload(d)}>Download</button>
                   <button className="btn subtle" onClick={() => onRemove(idx)}>Remove</button>
                 </div>
               </li>
@@ -191,6 +192,24 @@ function App() {
     }
   }, []);
 
+  const onDownload = React.useCallback((doc) => {
+    try {
+      const url = doc && doc.blobUrl;
+      if (!url) {
+        alert('This file was saved as metadata only. Please re-upload to download the original.');
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.name || 'download';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      alert('Unable to download this document.');
+    }
+  }, []);
+
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return docs;
@@ -239,7 +258,7 @@ function App() {
                 <p>{docs.length ? 'No matching documents.' : 'No documents yet. Drag and drop some files on the Upload tab.'}</p>
               </div>
             ) : (
-              <DocsList docs={filtered} onRemove={onRemove} onOpen={onOpen} />
+              <DocsList docs={filtered} onRemove={onRemove} onOpen={onOpen} onDownload={onDownload} />
             )}
           </div>
         </section>
@@ -253,6 +272,11 @@ function App() {
               <button className="btn subtle" onClick={() => setPreview(null)}>Close</button>
             </div>
             <div className="modal-body">
+              <div style={{display:'flex', justifyContent:'flex-end', gap:'8px', marginBottom:'8px'}}>
+                {preview.url && (
+                  <a className="btn subtle" href={preview.url} download={preview.name}>Download</a>
+                )}
+              </div>
               <PreviewContent url={preview.url} type={preview.type} name={preview.name} />
             </div>
           </div>

@@ -134,13 +134,11 @@ function App() {
   const [active, setActive] = React.useState('upload');
   const [docs, setDocs] = useLocalStorageDocs();
   const [query, setQuery] = React.useState('');
-  const [uploadLocked, setUploadLocked] = React.useState(false);
 
   const onFiles = React.useCallback((files) => {
     if (!files || !files.length) return;
     const arr = Array.from(files).map(f => ({ name: f.name, size: f.size, type: f.type, blobUrl: URL.createObjectURL(f) }));
     setDocs(prev => [...prev, ...arr]);
-    setUploadLocked(true);
   }, [setDocs]);
 
   const onRemove = React.useCallback((idx) => {
@@ -185,7 +183,7 @@ function App() {
       {active === 'upload' && (
         <section id="view-upload" className="view active" aria-labelledby="tab-upload">
           <div className="panel glass">
-            <Dropzone onFiles={onFiles} disabled={uploadLocked} />
+            <Dropzone onFiles={onFiles} />
             <div id="upload-hint" className="hint">Accepted: Any file. Your list appears right after drop.</div>
           </div>
         </section>
@@ -199,8 +197,8 @@ function App() {
               <div className="actions">
                 <input id="search-docs" type="search" className="btn subtle" placeholder="Search documents..." style={{minWidth:'180px', marginRight:'8px'}} aria-label="Search documents" value={query} onChange={(e)=> setQuery(e.target.value)} />
                 <button id="btn-clear" className="btn subtle" title="Clear all documents" onClick={onClear}>Clear All</button>
-                <label className="btn primary" aria-disabled={uploadLocked} style={uploadLocked?{opacity:.6, pointerEvents:'none'}:undefined}>
-                  <input id="add-more" type="file" multiple disabled={uploadLocked} onChange={(e)=> onFiles(e.target.files)} />
+                <label className="btn primary">
+                  <input id="add-more" type="file" multiple onChange={(e)=> onFiles(e.target.files)} />
                   Add More
                 </label>
                 <a className="btn primary" href="https://drive.google.com/drive/my-drive" target="_blank" rel="noopener noreferrer" title="Open Google Drive">

@@ -154,16 +154,10 @@ function App() {
 
   const onOpen = React.useCallback((doc) => {
     try {
-      let url = doc && doc.blobUrl;
+      const url = doc && doc.blobUrl;
       if (!url) {
-        const placeholder = new Blob([
-          `My Digital Library\n\n`+
-          `File: ${doc.name}\n`+
-          `Type: ${doc.type || 'unknown'}\n`+
-          `Size: ${humanSize(doc.size || 0)}\n`+
-          `Note: Content is available only for files added this session. Re-upload to preview the original file.\n`
-        ], { type: 'text/plain' });
-        url = URL.createObjectURL(placeholder);
+        alert('This file was saved as metadata only. Please re-upload to open the original.');
+        return;
       }
       const win = window.open(url, '_blank', 'noopener');
       if (!win) alert('Please allow pop-ups to open the document.');

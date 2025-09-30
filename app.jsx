@@ -210,6 +210,13 @@ function App() {
     }
   }, []);
 
+  React.useEffect(() => {
+    if (!preview) return;
+    const onKeyDown = (e) => { if (e.key === 'Escape') setPreview(null); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [preview]);
+
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return docs;

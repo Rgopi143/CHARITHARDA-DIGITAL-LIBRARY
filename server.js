@@ -112,6 +112,20 @@ app.delete('/api/docs/:id', async (req, res) => {
   }
 });
 
+// Bulk delete: remove all files from GridFS
+app.delete('/api/docs', async (req, res) => {
+  try {
+    await connect();
+    const ids = await db.collection('files.files').find({}, { projection: { _id: 1 } }).toArray();
+    for (const doc of ids) {
+      try { await bucket.delete(doc._id); } catch {}
+    }
+    res.json({ ok: true, deleted: ids.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`API listening on http://localhost:${PORT}`);
   console.log(`MongoDB: ${MONGO_URI}/${DB_NAME}`);

@@ -244,8 +244,11 @@ function App() {
 
   const onClear = React.useCallback(() => {
     if (!confirm('Clear all documents?')) return;
-    // No bulk delete endpoint; rely on local clear for UI only
-    setDocs([]);
+    (async () => {
+      try { await fetch(`${API_BASE}/docs`, { method: 'DELETE' }); } catch {}
+      const resp = await fetch(`${API_BASE}/docs`);
+      if (resp.ok) { const items = await resp.json(); setDocs(items); } else { setDocs([]); }
+    })();
   }, [setDocs]);
 
   const onOpen = React.useCallback((doc) => {

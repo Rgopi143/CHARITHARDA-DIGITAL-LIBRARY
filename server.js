@@ -90,8 +90,10 @@ app.get('/api/docs/:id/download', async (req, res) => {
     const id = new ObjectId(req.params.id);
     const fileDoc = await db.collection('files.files').findOne({ _id: id });
     if (!fileDoc) return res.status(404).json({ error: 'Not found' });
+    const forceDownload = req.query.download === '1' || req.query.download === 'true';
     res.setHeader('Content-Type', fileDoc.contentType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileDoc.filename)}"`);
+    const dispositionType = forceDownload ? 'attachment' : 'inline';
+    res.setHeader('Content-Disposition', `${dispositionType}; filename="${encodeURIComponent(fileDoc.filename)}"`);
     bucket.openDownloadStream(id).on('error', () => res.sendStatus(404)).pipe(res);
   } catch (e) {
     res.status(500).json({ error: e.message });

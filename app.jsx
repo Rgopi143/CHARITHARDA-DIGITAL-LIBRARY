@@ -1,10 +1,13 @@
 const STORAGE_KEY = 'mdl:docs';
+const API_BASE = 'http://localhost:3001/api';
+const IDB_NAME = 'mdlBlobs.v1';
+const IDB_STORE = 'files';
 
 function loadDocs() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
 }
 function saveDocs(docs) {
-  const toPersist = (docs || []).map(d => ({ name: d.name, size: d.size, type: d.type }));
+  const toPersist = (docs || []).map(d => ({ id: d.id, name: d.name, size: d.size, type: d.type }));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(toPersist));
 }
 function humanSize(bytes) {
@@ -164,28 +167,85 @@ function App() {
   const [query, setQuery] = React.useState('');
   const [preview, setPreview] = React.useState(null);
 
-  const onFiles = React.useCallback((files) => {
+  // --- IndexedDB helpers for Blob persistence across refreshes ---
+  const openDB = React.useCallback(() => new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }), []);
+
+  const idbPut = React.useCallback(async (id, blob) => {
+    const db = await openDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(blob, id);
+      tx.oncomplete = () => { db.close(); res(); };
+      tx.onerror = () => { db.close(); rej(tx.error); };
+    });
+  }, [openDB]);
+
+  const idbGet = React.useCallback(async (id) => {
+    const db = await openDB();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(id);
+      req.onsuccess = () => { const v = req.result; db.close(); res(v || null); };
+      req.onerror = () => { const err = req.error; db.close(); rej(err); };
+    });
+  }, [openDB]);
+
+  const idbDel = React.useCallback(async (id) => {
+    const db = await openDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(id);
+      tx.oncomplete = () => { db.close(); res(); };
+      tx.onerror = () => { db.close(); rej(tx.error); };
+    });
+  }, [openDB]);
+
+  const idbClear = React.useCallback(async () => {
+    const db = await openDB();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).clear();
+      tx.oncomplete = () => { db.close(); res(); };
+      tx.onerror = () => { db.close(); rej(tx.error); };
+    });
+  }, [openDB]);
+
+  const onFiles = React.useCallback(async (files) => {
     if (!files || !files.length) return;
-    const arr = Array.from(files).map(f => ({ name: f.name, size: f.size, type: f.type, blobUrl: URL.createObjectURL(f) }));
-    setDocs(prev => [...prev, ...arr]);
+    const fd = new FormData();
+    Array.from(files).forEach(f => fd.append('file', f));
+    const resp = await fetch(`${API_BASE}/upload`, { method: 'POST', body: fd });
+    if (!resp.ok) { alert('Upload failed'); return; }
+    const data = await resp.json();
+    const created = (data.uploaded || []).map(u => ({ id: u.id, name: u.name, size: u.size, type: u.type }));
+    setDocs(prev => [...created, ...prev]);
   }, [setDocs]);
 
-  const onRemove = React.useCallback((idx) => {
+  const onRemove = React.useCallback(async (idx) => {
+    setDocs(prev => prev);
+    const doc = docs[idx];
+    if (!doc) return;
+    await fetch(`${API_BASE}/docs/${encodeURIComponent(doc.id)}`, { method: 'DELETE' });
     setDocs(prev => prev.filter((_, i) => i !== idx));
-  }, [setDocs]);
+  }, [docs, setDocs]);
 
   const onClear = React.useCallback(() => {
     if (!confirm('Clear all documents?')) return;
+    // No bulk delete endpoint; rely on local clear for UI only
     setDocs([]);
   }, [setDocs]);
 
   const onOpen = React.useCallback((doc) => {
     try {
-      const url = doc && doc.blobUrl;
-      if (!url) {
-        alert('This file was saved as metadata only. Please re-upload to open the original.');
-        return;
-      }
+      const url = `${API_BASE}/docs/${encodeURIComponent(doc.id)}/download`;
       setPreview({ name: doc.name, type: doc.type, url });
     } catch (e) {
       alert('Unable to open this document.');
@@ -194,11 +254,7 @@ function App() {
 
   const onDownload = React.useCallback((doc) => {
     try {
-      const url = doc && doc.blobUrl;
-      if (!url) {
-        alert('This file was saved as metadata only. Please re-upload to download the original.');
-        return;
-      }
+      const url = `${API_BASE}/docs/${encodeURIComponent(doc.id)}/download?download=1`;
       const a = document.createElement('a');
       a.href = url;
       a.download = doc.name || 'download';
@@ -216,6 +272,19 @@ function App() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [preview]);
+
+  // Load list from API on entering Docs tab, and initially
+  React.useEffect(() => {
+    const load = async () => {
+      try {
+        const resp = await fetch(`${API_BASE}/docs`);
+        if (!resp.ok) return;
+        const items = await resp.json();
+        setDocs(items);
+      } catch {}
+    };
+    load();
+  }, [setDocs]);
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();

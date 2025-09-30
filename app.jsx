@@ -109,8 +109,8 @@ function DocsList({ docs, onRemove, onOpen, onDownload }) {
           <h3 style={{margin:'8px 2px 6px', fontSize:'14px', color:'#a9b3c9', fontWeight:600}}>{groupName} ({items.length})</h3>
           <ul className="docs-list">
             {items.map(({ d, idx }) => (
-              <li key={idx} className="doc-card">
-                <div className="doc-row" role="button" tabIndex={0} onClick={() => onOpen(d)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(d); } }}>
+              <li key={idx} className="doc-card" role="button" tabIndex={0} onClick={() => onOpen(d)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(d); } }}>
+                <div className="doc-row">
                   <div className="doc-icon">{iconFor(d.name, d.type)}</div>
                   <div className="doc-name" title={d.name}>{d.name}</div>
                 </div>
@@ -119,8 +119,8 @@ function DocsList({ docs, onRemove, onOpen, onDownload }) {
                   <span>{d.type || 'unknown'}</span>
                 </div>
                 <div className="doc-actions">
-                  <button className="btn subtle" onClick={() => onDownload(d)}>Download</button>
-                  <button className="btn subtle" onClick={() => onRemove(idx)}>Remove</button>
+                  <button className="btn subtle" onClick={(e) => { e.stopPropagation(); onDownload(d); }}>Download</button>
+                  <button className="btn subtle" onClick={(e) => { e.stopPropagation(); onRemove(idx); }}>Remove</button>
                 </div>
               </li>
             ))}

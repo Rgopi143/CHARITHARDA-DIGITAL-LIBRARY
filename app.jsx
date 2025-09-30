@@ -462,10 +462,7 @@ function App() {
                 <a className="btn primary" href="https://drive.google.com/drive/my-drive" target="_blank" rel="noopener noreferrer" title="Open Google Drive">Google Drive</a>
               </div>
             </div>
-            <div style={{display:'flex', gap:'8px', margin:'10px 0'}}>
-              <input type="url" placeholder="Paste Google Drive link (from email)" value={driveLink} onChange={(e)=> setDriveLink(e.target.value)} className="btn subtle" style={{flex:1}} />
-              <button className="btn subtle" onClick={importDriveLink} disabled={!driveLink.trim()}>Import Link</button>
-            </div>
+            
             {filtered.length === 0 ? (
               <div id="empty-state" className="empty">
                 <div className="empty-art">🗂️</div>

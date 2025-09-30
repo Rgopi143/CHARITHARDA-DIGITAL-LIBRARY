@@ -60,7 +60,8 @@ app.get('/api/docs', async (req, res) => {
   }
 });
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+// Increase upload size to support large videos (e.g., up to ~500MB)
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
 
 app.post('/api/upload', upload.array('file'), async (req, res) => {
   try {

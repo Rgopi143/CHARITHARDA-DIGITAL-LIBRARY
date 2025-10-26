@@ -17,6 +17,12 @@ const app = express();
 app.use(cors());
 app.use(morgan('dev'));
 
+// Serve static files (frontend)
+app.use(express.static('.'));
+
+// Add JSON body parser
+app.use(express.json());
+
 const PORT = process.env.PORT || 3001;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017';
 const DB_NAME = process.env.MONGO_DB || 'digital-library';
@@ -72,15 +78,30 @@ app.post('/api/upload', upload.array('file'), async (req, res) => {
     for (const f of files) {
       const id = new ObjectId();
       await new Promise((resolve, reject) => {
-        const stream = bucket.openUploadStreamWithId(id, f.originalname, { contentType: f.mimetype, metadata: { type: f.mimetype } });
-        stream.on('error', reject);
-        stream.on('finish', resolve);
+        const stream = bucket.openUploadStreamWithId(id, f.originalname, { 
+          contentType: f.mimetype, 
+          metadata: { 
+            type: f.mimetype,
+            originalName: f.originalname,
+            uploadDate: new Date(),
+            size: f.size
+          } 
+        });
+        stream.on('error', (err) => {
+          console.error('Upload error:', err);
+          reject(err);
+        });
+        stream.on('finish', () => {
+          console.log(`File uploaded successfully: ${f.originalname} (${id})`);
+          resolve();
+        });
         stream.end(f.buffer);
       });
       results.push({ id: String(id), name: f.originalname, size: f.size, type: f.mimetype });
     }
     res.status(201).json({ uploaded: results });
   } catch (e) {
+    console.error('Upload error:', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -91,12 +112,31 @@ app.get('/api/docs/:id/download', async (req, res) => {
     const id = new ObjectId(req.params.id);
     const fileDoc = await db.collection('files.files').findOne({ _id: id });
     if (!fileDoc) return res.status(404).json({ error: 'Not found' });
+    
     const forceDownload = req.query.download === '1' || req.query.download === 'true';
+    
+    // Set content headers
     res.setHeader('Content-Type', fileDoc.contentType || 'application/octet-stream');
+    res.setHeader('Content-Length', fileDoc.length);
+    
+    // Add cache headers for persistent access
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('ETag', `"${fileDoc._id}"`);
+    
     const dispositionType = forceDownload ? 'attachment' : 'inline';
     res.setHeader('Content-Disposition', `${dispositionType}; filename="${encodeURIComponent(fileDoc.filename)}"`);
-    bucket.openDownloadStream(id).on('error', () => res.sendStatus(404)).pipe(res);
+    
+    // Stream the file with proper error handling
+    const stream = bucket.openDownloadStream(id);
+    stream.on('error', (err) => {
+      console.error('Stream error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to read file' });
+      }
+    });
+    stream.pipe(res);
   } catch (e) {
+    console.error('Download error:', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -126,6 +166,7 @@ app.delete('/api/docs', async (req, res) => {
   }
 });
 
+// Server auto-start enabled
 app.listen(PORT, () => {
   console.log(`API listening on http://localhost:${PORT}`);
   console.log(`MongoDB: ${MONGO_URI}/${DB_NAME}`);
